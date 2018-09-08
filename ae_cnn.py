@@ -2,7 +2,6 @@
 where the embedding layer is represented as a vector.
 The code is mostly based on the implemenation of https://gist.github.com/okiriza/16ec1f29f5dd7b6d822a0a3f2af39274
 '''
-
 import random
 
 import torch
@@ -28,47 +27,35 @@ class ae(nn.Module):
 
         # decoder components
         self.dec_linear_1 = nn.Linear(self.emb_size, 100)
-        self.dec_linear_2 = nn.Linear(100, 20 * 20 * 20)
+        self.dec_linear_2 = nn.Linear(100, 20 * 4 * 4)
         self.dec_de_cnn_1 = nn.ConvTranspose2d(20, 10, kernel_size=5)
         self.dec_de_cnn_2 = nn.ConvTranspose2d(10, 1, kernel_size=5)
-
-    def encoder(self, images):
-        ''' encoder construction
-        '''
-
-        emb = self.enc_cnn_1(images)
-        emb = F.relu(F.max_pool2d(emb, 2))
-        
-        emb = self.enc_cnn_2(emb)
-        emb = F.relu(F.max_pool2d(emb, 2))
-        
-        emb = emb.view([images.size(0), -1])
-
-        emb = F.relu(self.enc_linear_1(emb))
-        emb = F.relu(self.enc_linear_2(emb))
-
-        return emb
-    
-    def decoder(self, emb):
-        ''' decoder construction
-        '''
-
-        out = F.relu(self.dec_linear_1(emb))
-        out = F.relu(self.dec_linear_2(out))
-
-        out = out.view([emb.shape[0], 20, 20, 20])
-
-        out = F.relu(self.dec_de_cnn_1(out))
-        out = F.relu(self.dec_de_cnn_2(out))
-        
-        return out
 
     def forward(self, images):
         ''' auto encoder
         '''
+        
+        # encoder
+        emb = F.relu(self.enc_cnn_1(images))
+        emb, indices1 = F.max_pool2d(emb, 2, return_indices=True)# return indices for unpooling
+        emb = F.relu(self.enc_cnn_2(emb))
+        emb, indices2 = F.max_pool2d(emb, 2, return_indices=True)
+        
+        emb = emb.view([images.size(0), -1])# unfolding
 
-        emb = self.encoder(images)
-        out = self.decoder(emb)
+        emb = F.relu(self.enc_linear_1(emb))
+        emb = F.relu(self.enc_linear_2(emb))
+
+        # decoder
+        out = F.relu(self.dec_linear_1(emb))
+        out = F.relu(self.dec_linear_2(out))
+
+        out = out.view([emb.shape[0], 20, 4, 4])# folding
+        
+        out = F.max_unpool2d(out, indices2, 2)
+        out = F.relu(self.dec_de_cnn_1(out))
+        out = F.max_unpool2d(out, indices1, 2)
+        out = F.relu(self.dec_de_cnn_2(out))
         return out, emb
 
 m = n = 28
